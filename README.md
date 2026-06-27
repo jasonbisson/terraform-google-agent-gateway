@@ -107,6 +107,27 @@ graph TD
    terraform apply -var-file=terraform.tfvars
    ```
 
+## Verifying Internal Routing
+
+After `terraform apply`, from a VM in the VPC:
+
+```bash
+# DNS resolves to the internal LB VIP
+dig +short legacy-dms.mcp.demo.example.com
+
+# LB routes by Host header to the matching Cloud Run service
+curl https://legacy-dms.mcp.demo.example.com/mcp
+curl https://corporate-email.mcp.demo.example.com/mcp
+curl https://income-verification.mcp.demo.example.com/mcp
+
+# *.run.app URLs are blocked from the public internet
+curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
+```
+
+---
+
+## Post-Deploy Configuration & Verification
+
 4. **Set Environment Variables**:
    Retrieve the generated project ID and region from the Terraform outputs:
    ```bash
@@ -156,29 +177,11 @@ graph TD
 
 ---
 
-## Verifying Internal Routing
-
-After `terraform apply`, from a VM in the VPC:
-
-```bash
-# DNS resolves to the internal LB VIP
-dig +short legacy-dms.mcp.demo.example.com
-
-# LB routes by Host header to the matching Cloud Run service
-curl https://legacy-dms.mcp.demo.example.com/mcp
-curl https://corporate-email.mcp.demo.example.com/mcp
-curl https://income-verification.mcp.demo.example.com/mcp
-
-# *.run.app URLs are blocked from the public internet
-curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
-```
-
----
-
 ## Known `gcloud` Exceptions
 
 The project convention is to manage all infrastructure via Terraform. The following exceptions use `gcloud` via `null_resource` local-exec because no native Terraform resource exists:
 
 - **Model Armor MCP Content Security** (`modules/model-armor/main.tf`): Uses `gcloud beta services mcp content-security add` to configure MCP floor settings. There is no Terraform resource for this API as of the current provider version.
+
 
 
