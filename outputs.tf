@@ -24,6 +24,11 @@ output "foundation_project_number" {
   value       = module.foundation.project_number
 }
 
+output "region" {
+  description = "The GCP region where resources are deployed"
+  value       = var.region
+}
+
 # Networking Module Outputs
 
 output "vpc_id" {

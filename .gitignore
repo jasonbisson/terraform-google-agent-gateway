@@ -40,3 +40,8 @@ override.tf.json
 .idea/
 .vscode/
 *.swp
+
+skaffold.yaml
+corporate-email.yaml
+income-verification-api.yaml
+legacy-dms.yaml
