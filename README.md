@@ -107,6 +107,53 @@ graph TD
    terraform apply -var-file=terraform.tfvars
    ```
 
+4. **Set Environment Variables**:
+   Retrieve the generated project ID and region from the Terraform outputs:
+   ```bash
+   export PROJECT_ID=$(terraform output -raw foundation_project_id)
+   export REGION=$(terraform output -raw region)
+   export MCP_INGRESS=all
+   ```
+
+5. **Verify Services**:
+   Verify that the Agent Registry, MCP Servers, and the Agent Gateway have been successfully provisioned:
+   ```bash
+   # List registered services
+   gcloud alpha agent-registry services list \
+     --project=${PROJECT_ID} --location=${REGION} \
+     --format="value(displayName,name)"
+
+   # List registered MCP servers
+   gcloud alpha agent-registry mcp-servers list \
+     --project=${PROJECT_ID} --location=${REGION} \
+     --format="value(displayName,name)"
+
+   # Describe the Agent Gateway
+   gcloud alpha network-services agent-gateways describe agent-gateway \
+     --project=${PROJECT_ID} --location=${REGION}
+   ```
+
+6. **Update MCP Deployment Configuration**:
+   Use `sed` to render the deployment configuration files by replacing the template variables:
+   ```bash
+   # Substitute in skaffold.yaml.tmpl
+   sed -e "s/\${PROJECT_ID}/${PROJECT_ID}/g" \
+       -e "s/\${REGION}/${REGION}/g" \
+       -e "s/\${MCP_INGRESS}/${MCP_INGRESS}/g" \
+       skaffold.yaml.tmpl > skaffold.yaml
+
+   # Substitute in all cloudrun template files
+   for f in cloudrun/*.yaml.tmpl; do
+     sed -e "s/\${PROJECT_ID}/${PROJECT_ID}/g" \
+         -e "s/\${REGION}/${REGION}/g" \
+         -e "s/\${MCP_INGRESS}/${MCP_INGRESS}/g" \
+         "$f" > "${f%.tmpl}"
+   done
+
+   # Verify variables are updated (should return no output)
+   grep -E '\$\{PROJECT_ID\}|\$\{REGION\}|\$\{MCP_INGRESS\}' skaffold.yaml cloudrun/*.yaml
+   ```
+
 ---
 
 ## Verifying Internal Routing
@@ -133,4 +180,5 @@ curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
 The project convention is to manage all infrastructure via Terraform. The following exceptions use `gcloud` via `null_resource` local-exec because no native Terraform resource exists:
 
 - **Model Armor MCP Content Security** (`modules/model-armor/main.tf`): Uses `gcloud beta services mcp content-security add` to configure MCP floor settings. There is no Terraform resource for this API as of the current provider version.
+
 
