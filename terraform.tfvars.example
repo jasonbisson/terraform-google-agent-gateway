@@ -1,0 +1,213 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ##############################################################################
+# # REQUIRED — edit these values before `terraform apply`.                     #
+# ##############################################################################
+
+# The base name of the GCP project. If `random_project_id` is true, 
+# a random 4-character suffix will be appended (e.g., "my-mcp-project-5353").
+project_id = "your-gcp-project-name"
+
+# Billing account ID to associate with the project (e.g., "01AF9B-F212B0-7206D7").
+billing_account = "your-billing-account-id"
+
+# GCP organization ID (numeric) under which the project will be created.
+# Required if the agent engine is enabled.
+organization_id = "your-gcp-organization-id"
+
+# Folder ID to place the project in (optional, e.g., "730176018671").
+folder_id = null
+
+# List of IAM members granted administrator permissions on the demo infrastructure
+# (e.g., ["user:admin@example.com", "group:platform-admins@example.com"]).
+platform_admin_members = []
+
+# ##############################################################################
+# # OPTIONAL — infrastructure settings with pre-tuned defaults.               #
+# ##############################################################################
+
+# The region where regional resources (subnets, load balancers, Cloud Run) will be created.
+region = "us-central1"
+
+# Prefix prepended to resources created in the project (e.g., "gateway-vpc").
+name_prefix = "gateway"
+
+# Whether to append a 4-character random suffix to the project_id.
+# Set to false to use the exact project_id value specified above.
+random_project_id = true
+
+# The deletion policy for the project. Options: "DELETE" (deletes project on destroy),
+# "PREVENT" (prevents accidental project deletion), "ABANDON" (leaves project intact).
+deletion_policy = "DELETE"
+
+# ==============================================================================
+# CLOUD RUN PRIVATE NETWORKING — feature flag for the secure MCP path
+# ==============================================================================
+#
+# false (default): MCP Cloud Run services run with `ingress = all` and the
+#   Agent Registry registers each service at its literal *.run.app URL. No
+#   internal LB, no MCP private DNS zone, no public DNS zone, no Certificate
+#   Manager cert, no Agent Gateway peering for `mcp.<domain>.`. Simplest path
+#   — works with no domain ownership.
+#
+# true: provisions all of the above so the agent reaches MCP via
+#   `<service>.<mcp_internal_dns_zone.domain>` over an internal Application LB.
+#   Requires you to own `dns_zone_domain` (so Certificate Manager can validate
+#   the LB cert) and to set `mcp_internal_dns_zone` and `mcp_lb_protocol`.
+#   See the "Secure path (opt-in)" section below.
+enable_cloud_run_private_networking = false
+
+# Public DNS zone domain (must end with a dot)
+# A Cloud DNS managed zone must already exist for this domain.
+# Only used when enable_cloud_run_private_networking = true.
+dns_zone_domain = "demo.example.com."
+
+# Enable Google Certificate Manager for automatic TLS certificates.
+# Provisions managed certs matching *.internal.<dns_zone_domain>.
+# Only takes effect when enable_cloud_run_private_networking = true.
+enable_certificate_manager = true
+
+# Private DNS zone hosting per-service A records, attached to the VPC so
+# workloads (and Agent Engine via DNS peering) resolve internally.
+# Only used when enable_cloud_run_private_networking = true.
+#
+# `domain` MUST be a real subdomain of dns_zone_domain (e.g.
+# "mcp.${dns_zone_domain}") so Certificate Manager can issue a Google-managed
+# regional cert. Agent Gateway does not currently validate self-signed certs,
+# so values like "mcp-server.internal." (the legacy default) only work when
+# enable_agent_gateway = false.
+mcp_internal_dns_zone = {
+  name   = "mcp-server-internal"
+  domain = "mcp.demo.example.com."
+}
+
+# Front-end protocol for the MCP internal Application LB. HTTPS (default) uses
+# the Google-managed regional cert covering *.mcp.<dns_zone_domain> when
+# enable_certificate_manager = true; otherwise it falls back to a self-signed
+# cert for *.<mcp_internal_dns_zone.domain>. Set "HTTP" for the simplest demo.
+# Only used when enable_cloud_run_private_networking = true.
+mcp_lb_protocol = "HTTPS"
+
+# ==============================================================================
+# MCP SERVICES (CLOUD RUN)
+# ==============================================================================
+
+# Map of MCP service name to deployment configuration. The map key becomes the
+# Cloud Run service name AND the URL-mask token (e.g. legacy-dms ->
+# legacy-dms.${mcp_internal_dns_zone.domain}). Adding a new service is a Cloud
+# Run deploy plus one entry in this map (a DNS A record is added automatically).
+# The `us-docker.pkg.dev/cloudrun/container/placeholder` image is a Google-
+# provided stub; replace with your own image in Artifact Registry before the
+# service handles real traffic (Skaffold deploys overwrite the image tag).
+# min_instance_count = 1 keeps one warm instance per service. MCP tools/list
+# runs at the start of every agent turn with a 5s initialize() timeout; a
+# scale-to-zero cold start (~16-19s observed) trips that timeout and drops all
+# MCP tools for the request. Set to 0 if you don't mind cold-start failures.
+mcp_services = {
+  legacy-dms = {
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
+  }
+  corporate-email = {
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
+  }
+  income-verification = {
+    image              = "us-docker.pkg.dev/cloudrun/container/placeholder"
+    min_instance_count = 1
+  }
+}
+
+# Per-service toolspec paths (relative to the root directory or absolute). Required for
+# every active mcp_services key when enable_agent_registry_endpoints = true. The
+# toolspec is uploaded as the MCP server spec on the Agent Registry entry so
+# clients see the full tool catalogue.
+mcp_tool_specs = {
+  legacy-dms          = "src/legacy-dms/toolspec.json"
+  corporate-email     = "src/corporate-email/toolspec.json"
+  income-verification = "src/income-verification-api/toolspec.json"
+}
+
+# ==============================================================================
+# MODEL ARMOR - AI Safety Screening
+# ==============================================================================
+
+# Enable Model Armor templates for AI safety filtering on LB traffic
+enable_model_armor = true
+
+# Enable a multi-region template for Gemini Enterprise
+enable_model_armor_gemini_enterprise = true
+
+# Prompt injection / jailbreak detection confidence threshold
+# Options: LOW_AND_ABOVE, MEDIUM_AND_ABOVE, HIGH
+model_armor_pi_jailbreak_confidence = "MEDIUM_AND_ABOVE"
+
+# Sensitive Data Protection enforcement (ENABLED or DISABLED).
+# When ENABLED, the model-armor module also creates a DLP inspect template
+# (US_SOCIAL_SECURITY_NUMBER), a DLP de-identify template (replace with
+# infoType), and binds the Model Armor service agent to roles/dlp.{user,reader}.
+# The response Model Armor template's sdp_settings.advanced_config is wired to
+# those DLP templates so SSNs in MCP responses are redacted in flight.
+model_armor_sdp_enforcement = "ENABLED"
+
+# ==============================================================================
+# AGENT ENGINE & AGENT GATEWAY
+# ==============================================================================
+
+# Enable Vertex AI Agent Engine infrastructure (IAM, networking)
+enable_agent_engine = true
+
+# Enable PSC Interface for Agent Engine to call back into the VPC.
+# Creates network attachment, firewall rules, and IAM bindings. Independent
+# of the master flag — leave true to give Agent Engine VPC reachability even
+# when private networking is off.
+enable_psc_interface = true
+
+# Enable the Agent Gateway (AGENT_TO_ANYWHERE for MCP), its dedicated PSC-I
+# subnet, IAP and Model Armor authz extensions/policies, and the IAP agent
+# registry IAM grant for the project's Vertex AI agents. When enabled, the MCP
+# internal LB VIP is relocated into the dedicated subnet so PSC-I and the LB
+# share a subnet (forces an LB recreation; expected for the demo).
+enable_agent_gateway = true
+
+# Name of the Agent Gateway resource (also used as a prefix for the network
+# attachment, authz extensions, and authz policies).
+agent_gateway_name = "agent-gateway"
+
+# Dedicated subnet for the Agent Gateway PSC-I network attachment AND the
+# relocated MCP internal LB VIP. Min /28, RFC1918, must NOT overlap
+# 10.0.0.0/24, 10.0.1.0/24, or 10.0.2.0/24 (Agent Gateway egress restrictions).
+agent_gateway_subnet_cidr = "10.20.0.0/28"
+
+# When true, allow traffic through the Agent Gateway if an authz extension
+# fails. Set false in production to fail-closed.
+agent_gateway_authz_fail_open = true
+
+# DNS peering: lets the gateway resolve customer-VPC private DNS zones so it
+# can reach upstream MCP servers by hostname. The `mcp.<domain>.` entry for
+# the internal LB hostnames is auto-prepended when
+# `enable_cloud_run_private_networking = true`, so this list only needs any
+# extra domains. Each domain MUST end with a trailing dot. Set the whole var
+# to null to skip entirely.
+agent_gateway_dns_peering_config = {
+  domains = []
+}
+
+# ==============================================================================
+# AGENT REGISTRY ENDPOINTS
+# ==============================================================================
+
+# Enable the Agent Registry endpoint provisioner
+enable_agent_registry_endpoints = true
