@@ -107,28 +107,26 @@ graph TD
    terraform apply -var-file=terraform.tfvars
    ```
 
-## Verifying Internal Routing
+4. **Verifying Internal Routing**:
+   After `terraform apply`, from a VM in the VPC:
+   ```bash
+   # DNS resolves to the internal LB VIP
+   dig +short legacy-dms.mcp.demo.example.com
 
-After `terraform apply`, from a VM in the VPC:
+   # LB routes by Host header to the matching Cloud Run service
+   curl https://legacy-dms.mcp.demo.example.com/mcp
+   curl https://corporate-email.mcp.demo.example.com/mcp
+   curl https://income-verification.mcp.demo.example.com/mcp
 
-```bash
-# DNS resolves to the internal LB VIP
-dig +short legacy-dms.mcp.demo.example.com
-
-# LB routes by Host header to the matching Cloud Run service
-curl https://legacy-dms.mcp.demo.example.com/mcp
-curl https://corporate-email.mcp.demo.example.com/mcp
-curl https://income-verification.mcp.demo.example.com/mcp
-
-# *.run.app URLs are blocked from the public internet
-curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
-```
+   # *.run.app URLs are blocked from the public internet
+   curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
+   ```
 
 ---
 
 ## Post-Deploy Configuration & Verification
 
-4. **Set Environment Variables**:
+5. **Set Environment Variables**:
    Retrieve the generated project ID and region from the Terraform outputs:
    ```bash
    export PROJECT_ID=$(terraform output -raw foundation_project_id)
@@ -136,7 +134,7 @@ curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
    export MCP_INGRESS=all
    ```
 
-5. **Verify Services**:
+6. **Verify Services**:
    Verify that the Agent Registry, MCP Servers, and the Agent Gateway have been successfully provisioned:
    ```bash
    # List registered services
@@ -154,7 +152,7 @@ curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
      --project=${PROJECT_ID} --location=${REGION}
    ```
 
-6. **Update MCP Deployment Configuration**:
+7. **Update MCP Deployment Configuration**:
    Use `sed` to render the deployment configuration files by replacing the template variables:
    ```bash
    # Substitute in skaffold.yaml.tmpl
