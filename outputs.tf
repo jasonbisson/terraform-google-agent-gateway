@@ -29,6 +29,11 @@ output "region" {
   value       = var.region
 }
 
+output "organization_id" {
+  description = "The GCP organization ID"
+  value       = var.organization_id
+}
+
 # Networking Module Outputs
 
 output "vpc_id" {
@@ -137,6 +142,11 @@ output "artifact_registry_id" {
 output "artifact_registry_url" {
   description = "The Artifact Registry repository URL for docker push/pull"
   value       = "${var.region}-docker.pkg.dev/${module.foundation.project_id}/${google_artifact_registry_repository.registry.repository_id}"
+}
+
+output "cloudbuild_service_account" {
+  description = "The email of the custom user-managed Cloud Build service account"
+  value       = google_service_account.cloudbuild.email
 }
 
 # Certificate Outputs

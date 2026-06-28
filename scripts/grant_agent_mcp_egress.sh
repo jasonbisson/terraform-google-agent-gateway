@@ -309,8 +309,10 @@ process_resource_type() {
 		return 1
 	fi
 
-	local entries
-	mapfile -t entries < <(jq -r --arg c "${collection}" '
+	local entries=()
+	while IFS= read -r line; do
+		entries+=("$line")
+	done < <(jq -r --arg c "${collection}" '
     .[$c] // []
     | .[]
     | [

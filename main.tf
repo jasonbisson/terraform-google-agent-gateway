@@ -165,21 +165,40 @@ resource "google_storage_bucket" "cloudbuild" {
   depends_on = [module.foundation]
 }
 
-# Grant Compute Engine default SA full bucket access for Cloud Build source
-# uploads. roles/storage.admin (scoped to the bucket) is required because
-# Cloud Build's build-creation step calls storage.buckets.get to validate the
-# source bucket — a permission not included in roles/storage.objectAdmin.
-resource "google_storage_bucket_iam_member" "cloudbuild_compute_sa" {
-  bucket = google_storage_bucket.cloudbuild.name
-  role   = "roles/storage.admin"
-  member = "serviceAccount:${module.foundation.project_number}-compute@developer.gserviceaccount.com"
+# Dedicated user-managed service account for Cloud Build
+# Bypasses the need to use the default Compute Engine SA when it is disabled.
+resource "google_service_account" "cloudbuild" {
+  project      = module.foundation.project_id
+  account_id   = "${var.name_prefix}-build-sa"
+  display_name = "Cloud Build Executor Service Account"
 }
 
-# Grant Compute Engine default SA artifact registry access for Cloud Build
-resource "google_project_iam_member" "cloudbuild_registry" {
+# Grant the Cloud Build service agent permission to act as the custom build SA
+resource "google_service_account_iam_member" "cloudbuild_agent_user" {
+  service_account_id = google_service_account.cloudbuild.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:service-${module.foundation.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+}
+
+# Grant custom build SA full bucket access for Cloud Build source uploads.
+resource "google_storage_bucket_iam_member" "cloudbuild_sa_storage" {
+  bucket = google_storage_bucket.cloudbuild.name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
+
+# Grant custom build SA artifact registry access to push Docker images.
+resource "google_project_iam_member" "cloudbuild_sa_registry" {
   project = module.foundation.project_id
   role    = "roles/artifactregistry.writer"
-  member  = "serviceAccount:${module.foundation.project_number}-compute@developer.gserviceaccount.com"
+  member  = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
+
+# Grant custom build SA permission to write logs to Cloud Logging
+resource "google_project_iam_member" "cloudbuild_sa_logging" {
+  project = module.foundation.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
 
 # Grant Cloud Build service agent storage access for source tarballs

@@ -65,6 +65,13 @@ resource "google_project_service_identity" "network_services" {
   depends_on = [module.project]
 }
 
+# Allow time for the Service Extensions service identity to propagate
+# before downstream modules attempt to bind IAM roles.
+resource "time_sleep" "network_services_identity_propagation" {
+  depends_on      = [google_project_service_identity.network_services]
+  create_duration = "30s"
+}
+
 # Enable Vertex AI API explicitly to control order and avoid race conditions
 # in the project module's IAM bindings
 resource "google_project_service" "aiplatform" {

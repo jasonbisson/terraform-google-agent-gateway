@@ -214,7 +214,7 @@ resource "google_network_services_authz_extension" "model_armor" {
 # evaluates once per request at the headers stage. target.load_balancing_scheme
 # must be omitted when targeting an Agent Gateway.
 resource "google_network_security_authz_policy" "iap" {
-  depends_on     = [time_sleep.wait_for_gateway]
+  depends_on     = [time_sleep.wait_for_gateway, terraform_data.dns_peering]
   provider       = google-beta
   project        = var.project_id
   name           = "${var.name}-iap-policy"
@@ -239,7 +239,7 @@ resource "google_network_security_authz_policy" "iap" {
 # Host header values via http_rules; otherwise the policy applies to all
 # gateway traffic.
 resource "google_network_security_authz_policy" "model_armor" {
-  depends_on     = [time_sleep.wait_for_gateway]
+  depends_on     = [time_sleep.wait_for_gateway, terraform_data.dns_peering]
   count          = var.enable_model_armor ? 1 : 0
   provider       = google-beta
   project        = var.project_id

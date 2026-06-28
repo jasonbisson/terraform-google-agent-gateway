@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,24 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-
-output "project_id" {
-  description = "The GCP project ID"
-  value       = module.project.project_id
-
-  depends_on = [
-    time_sleep.wait_for_org_policy,
-    time_sleep.network_services_identity_propagation
-  ]
-}
-
-output "project_number" {
-  description = "The GCP project number"
-  value       = module.project.project_number
-}
-
-output "enabled_services" {
-  description = "List of enabled Google Cloud APIs"
-  value       = var.gcp_service_list
-}
+steps:
+- name: 'gcr.io/kaniko-project/executor:latest'
+  args:
+  - --destination=$_IMAGE
+  - --context=dir://.
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -124,13 +124,14 @@ graph TD
 
 ---
 
-## Post-Deploy Configuration & Verification
-
 5. **Set Environment Variables**:
-   Retrieve the generated project ID and region from the Terraform outputs:
+   Retrieve the generated project ID, region, and the user-managed Cloud Build service account email from the Terraform outputs:
    ```bash
    export PROJECT_ID=$(terraform output -raw foundation_project_id)
    export REGION=$(terraform output -raw region)
+   export PROJECT_NUMBER=$(terraform output -raw foundation_project_number)
+   export ORG_ID=$(terraform output -raw organization_id)
+   export BUILD_SA=$(terraform output -raw cloudbuild_service_account)
    export MCP_INGRESS=all
    ```
 
@@ -153,14 +154,8 @@ graph TD
    ```
 
 7. **Update MCP Deployment Configuration**:
-   Use `sed` to render the deployment configuration files by replacing the template variables:
+   Use `sed` to render the Cloud Run deployment configuration files by replacing the template variables:
    ```bash
-   # Substitute in skaffold.yaml.tmpl
-   sed -e "s/\${PROJECT_ID}/${PROJECT_ID}/g" \
-       -e "s/\${REGION}/${REGION}/g" \
-       -e "s/\${MCP_INGRESS}/${MCP_INGRESS}/g" \
-       skaffold.yaml.tmpl > skaffold.yaml
-
    # Substitute in all cloudrun template files
    for f in cloudrun/*.yaml.tmpl; do
      sed -e "s/\${PROJECT_ID}/${PROJECT_ID}/g" \
@@ -170,8 +165,51 @@ graph TD
    done
 
    # Verify variables are updated (should return no output)
-   grep -E '\$\{PROJECT_ID\}|\$\{REGION\}|\$\{MCP_INGRESS\}' skaffold.yaml cloudrun/*.yaml
+   grep -E '\$\{PROJECT_ID\}|\$\{REGION\}|\$\{MCP_INGRESS\}' cloudrun/*.yaml
    ```
+
+8. **Build and Deploy MCP Services**:
+   Build the container images using Cloud Build (using the static `cloudbuild.yaml` in the root directory to specify `CLOUD_LOGGING_ONLY` and the user-managed service account, bypassing the disabled default Compute Engine SA) and deploy them to Cloud Run:
+   ```bash
+   # Build and push the service images using the user-managed Cloud Build service account
+   gcloud builds submit src/legacy-dms \
+     --config=cloudbuild.yaml \
+     --substitutions=_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/gateway-docker/legacy-dms:latest" \
+     --service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA}" \
+     --project=${PROJECT_ID}
+
+   gcloud builds submit src/corporate-email \
+     --config=cloudbuild.yaml \
+     --substitutions=_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/gateway-docker/corporate-email:latest" \
+     --service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA}" \
+     --project=${PROJECT_ID}
+
+   gcloud builds submit src/income-verification-api \
+     --config=cloudbuild.yaml \
+     --substitutions=_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/gateway-docker/income-verification-api:latest" \
+     --service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA}" \
+     --project=${PROJECT_ID}
+   ```
+
+   # Deploy the services to Cloud Run
+   gcloud run services replace cloudrun/legacy-dms.yaml \
+     --project=${PROJECT_ID} --region=${REGION}
+
+   gcloud run services replace cloudrun/corporate-email.yaml \
+     --project=${PROJECT_ID} --region=${REGION}
+
+   gcloud run services replace cloudrun/income-verification-api.yaml \
+     --project=${PROJECT_ID} --region=${REGION}
+   ```
+
+9. **Grant Agent MCP Egress Permissions**:
+   Run the provided helper script to authorize your Vertex AI Agents to call the private MCP services through the Agent Gateway:
+   ```bash
+   chmod +x scripts/grant_agent_mcp_egress.sh
+   ./scripts/grant_agent_mcp_egress.sh
+   ```
+
+
 
 ---
 
