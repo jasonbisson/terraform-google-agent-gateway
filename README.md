@@ -209,6 +209,69 @@ graph TD
    ./scripts/grant_agent_mcp_egress.sh
    ```
 
+10. **Deploy the Vertex AI Agent**:
+    Deploy the Mortgage Assistant Agent to Vertex AI Reasoning Engine using standard Python virtual environments:
+    ```bash
+    # Navigate to the agent directory
+    cd src/mortgage-agent
+
+    # Create and activate a virtual environment
+    python3 -m venv .venv
+    source .venv/bin/activate
+
+    # Install dependencies and the local package in editable mode
+    pip install --upgrade pip
+    pip install google-cloud-aiplatform
+    pip install -e .
+
+    # Retrieve the invoker service account email
+    export MCP_INVOKER_SA_EMAIL=$(terraform -chdir=../.. output -raw agent_mcp_invoker_email)
+
+    # Deploy the agent
+    python deploy_agent.py \
+      --project=${PROJECT_ID} \
+      --region=${REGION} \
+      --enable-agent-identity \
+      --agent-name=mortgage-agent \
+      --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
+      --mcp-invoker-sa=${MCP_INVOKER_SA_EMAIL} \
+      --model-endpoint-location=global
+
+    # Capture the AGENT_ID programmatically from the Vertex AI REST API
+    export AGENT_ID=$(curl -fsS \
+      -H "Authorization: Bearer \$(gcloud auth print-access-token)" \
+      "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
+      | jq -r '.reasoningEngines[] | select(.displayName=="mortgage-agent") | .name' \
+      | awk -F'/' '{print \$NF}')
+    ```
+
+---
+
+## Clean Up & Destroy
+
+If you want to tear down the infrastructure, you must delete the Vertex AI Reasoning Engine agent **before** running `terraform destroy`. The agent holds an active network egress connection to the Agent Gateway, which prevents the gateway from being deleted.
+
+1. **Delete the Vertex AI Agent**:
+   ```bash
+   # Extract the agent ID
+   export AGENT_ID=$(curl -fsS \
+     -H "Authorization: Bearer \$(gcloud auth print-access-token)" \
+     "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
+     | jq -r '.reasoningEngines[] | select(.displayName=="mortgage-agent") | .name' \
+     | awk -F'/' '{print \$NF}')
+
+    # Delete the agent
+    gcloud beta ai reasoning-engines delete ${AGENT_ID} \
+      --region=${REGION} --project=${PROJECT_ID}
+    ```
+
+2. **Destroy Infrastructure**:
+   ```bash
+   terraform destroy -var-file=terraform.tfvars
+   ```
+
+
+
 
 
 ---
@@ -218,6 +281,8 @@ graph TD
 The project convention is to manage all infrastructure via Terraform. The following exceptions use `gcloud` via `null_resource` local-exec because no native Terraform resource exists:
 
 - **Model Armor MCP Content Security** (`modules/model-armor/main.tf`): Uses `gcloud beta services mcp content-security add` to configure MCP floor settings. There is no Terraform resource for this API as of the current provider version.
+
+
 
 
 
