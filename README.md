@@ -245,15 +245,8 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
      --project=${PROJECT_ID} --region=${REGION}
    ```
 
-9. **Grant Agent MCP Egress Permissions**:
-   Run the provided helper script to authorize your Vertex AI Agents to call the private MCP services through the Agent Gateway:
-   ```bash
-   chmod +x scripts/grant_agent_mcp_egress.sh
-   ./scripts/grant_agent_mcp_egress.sh
-   ```
-
-10. **Deploy the Vertex AI Agent**:
-    Deploy the Mortgage Assistant Agent to Vertex AI Reasoning Engine using standard Python virtual environments:
+9. **Deploy the Vertex AI Agent & Grant Egress Permissions**:
+    Deploy the Mortgage Assistant Agent to Vertex AI Reasoning Engine. When `--enable-agent-identity` is passed, `deploy_agent.py` automatically grants `roles/iap.egressor` to the agent's identity on all registered Agent Registry MCP services:
     ```bash
     # Navigate to the agent directory
     cd src/mortgage-agent
@@ -270,7 +263,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
     # Retrieve the invoker service account email
     export MCP_INVOKER_SA_EMAIL=$(terraform -chdir=../.. output -raw agent_mcp_invoker_email)
 
-    # Deploy the agent
+    # Deploy the agent (automatically grants Agent Gateway egress permissions)
     python deploy_agent.py \
       --project=${PROJECT_ID} \
       --region=${REGION} \

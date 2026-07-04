@@ -213,6 +213,125 @@ def _ge_deploy(
         sys.exit(1)
 
 
+def _auto_grant_mcp_egress(
+    *,
+    project: str,
+    region: str,
+    reasoning_engine_name: str,
+) -> None:
+    """Grant roles/iap.egressor to the reasoning engine agent identity on all Agent Registry MCP servers and endpoints."""
+    import google.auth
+    import google.auth.transport.requests
+
+    try:
+        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        credentials.refresh(google.auth.transport.requests.Request())
+        headers = {
+            "Authorization": f"Bearer {credentials.token}",
+            "Content-Type": "application/json",
+            "X-Goog-User-Project": project,
+        }
+
+        # Discover project_number and org_id
+        project_number = os.environ.get("PROJECT_NUMBER")
+        org_id = os.environ.get("ORG_ID")
+
+        crm_url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}"
+        req = urllib.request.Request(crm_url, headers=headers)
+        try:
+            with urllib.request.urlopen(req) as resp:
+                p_info = json.loads(resp.read().decode("utf-8"))
+                project_number = project_number or p_info.get("projectNumber")
+                parent = p_info.get("parent", {})
+                if parent.get("type") == "organization":
+                    org_id = org_id or parent.get("id")
+        except Exception:
+            pass
+
+        if not project_number or not org_id:
+            print("  Note: Could not automatically determine project_number/org_id for IAP egress IAM grant.")
+            print("  You can run `scripts/grant_agent_mcp_egress.sh` to grant roles/iap.egressor if needed.")
+            return
+
+        agent_id = reasoning_engine_name.split("/")[-1]
+        agent_principal = (
+            f"principal://agents.global.org-{org_id}.system.id.goog/resources/"
+            f"aiplatform/projects/{project_number}/locations/{region}/reasoningEngines/{agent_id}"
+        )
+        role = "roles/iap.egressor"
+
+        print(f"\nGranting Agent Gateway egress IAM ({role}) to:")
+        print(f"  {agent_principal}")
+
+        granted_count = 0
+        for resource_type in ["mcpServers", "endpoints"]:
+            ar_url = f"https://agentregistry.googleapis.com/v1alpha/projects/{project}/locations/{region}/{resource_type}"
+            try:
+                list_req = urllib.request.Request(ar_url, headers=headers)
+                with urllib.request.urlopen(list_req) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    items = data.get(resource_type, [])
+            except Exception:
+                continue
+
+            for item in items:
+                resource_name = item.get("name")
+                if not resource_name:
+                    continue
+                res_id = resource_name.split("/")[-1]
+                display_name = item.get("displayName", res_id)
+                iap_url = f"https://iap.googleapis.com/v1/projects/{project}/locations/{region}/iap_web/agentRegistry/{resource_type}/{res_id}"
+
+                try:
+                    # getIamPolicy
+                    get_req = urllib.request.Request(
+                        f"{iap_url}:getIamPolicy",
+                        data=json.dumps({"options": {"requestedPolicyVersion": 3}}).encode("utf-8"),
+                        headers=headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(get_req) as get_resp:
+                        policy = json.loads(get_resp.read().decode("utf-8"))
+
+                    bindings = policy.get("bindings", [])
+                    target_binding = None
+                    for b in bindings:
+                        if b.get("role") == role and not b.get("condition"):
+                            target_binding = b
+                            break
+
+                    if target_binding:
+                        if agent_principal not in target_binding.get("members", []):
+                            target_binding.setdefault("members", []).append(agent_principal)
+                    else:
+                        bindings.append({"role": role, "members": [agent_principal]})
+
+                    policy["bindings"] = bindings
+                    policy["version"] = 3
+
+                    # setIamPolicy
+                    set_req = urllib.request.Request(
+                        f"{iap_url}:setIamPolicy",
+                        data=json.dumps({"policy": policy}).encode("utf-8"),
+                        headers=headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(set_req) as set_resp:
+                        set_resp.read()
+
+                    print(f"  ✓ Granted {role} on {resource_type}/{display_name}")
+                    granted_count += 1
+                except Exception as e:
+                    print(f"  ✕ Could not set IAM policy on {resource_type}/{display_name}: {e}")
+
+        if granted_count == 0:
+            print("  Note: No registered Agent Registry MCP servers/endpoints found to grant egress permissions.")
+    except Exception as err:
+        print(f"Note: Auto-granting egress IAM encountered an issue: {err}")
+        print("You can run `scripts/grant_agent_mcp_egress.sh` manually if needed.")
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy mortgage assistant agent to Vertex AI Agent Engine")
     parser.add_argument(
@@ -610,7 +729,12 @@ def main() -> None:
         print("Set the resource name in your terraform.tfvars:")
         print(f'  agent_engine_resource_name = "{reasoning_engine_name}"')
         if args.enable_agent_identity:
-            print("\nAgent identity enabled. Grant IAM to the agent's principal shown above.")
+            print("\nAgent identity enabled. Granting IAM to the agent's principal...")
+            _auto_grant_mcp_egress(
+                project=args.project,
+                region=args.region,
+                reasoning_engine_name=reasoning_engine_name,
+            )
 
     if args.ge_deploy:
         print()
