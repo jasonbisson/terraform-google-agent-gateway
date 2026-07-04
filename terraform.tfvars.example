@@ -16,18 +16,18 @@
 # # REQUIRED — edit these values before `terraform apply`.                     #
 # ##############################################################################
 
-# The base name of the GCP project. If `random_project_id` is true, 
-# a random 4-character suffix will be appended (e.g., "my-mcp-project-5353").
+# The prefix name of the GCP project. If `random_project_id` is true, 
+# a random 4-character suffix will be appended (e.g., "my-mcp-project-1234").
 project_id = "your-gcp-project-name"
 
-# Billing account ID to associate with the project (e.g., "01AF9B-F212B0-7206D7").
+# Billing account ID to associate with the project (e.g., "000000-000000-000000").
 billing_account = "your-billing-account-id"
 
 # GCP organization ID (numeric) under which the project will be created.
 # Required if the agent engine is enabled.
 organization_id = "your-gcp-organization-id"
 
-# Folder ID to place the project in (optional, e.g., "730176018671").
+# Folder ID to place the project in (optional, e.g., "123456789012").
 folder_id = null
 
 # List of IAM members granted administrator permissions on the demo infrastructure

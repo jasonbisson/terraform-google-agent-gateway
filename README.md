@@ -260,13 +260,15 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
     pip install google-cloud-aiplatform
     pip install -e .
 
-    # Retrieve the invoker service account email
+    # Retrieve the invoker service account email and Organization ID
     export MCP_INVOKER_SA_EMAIL=$(terraform -chdir=../.. output -raw agent_mcp_invoker_email)
+    export ORG_ID=$(gcloud organizations list --format="value(name)" 2>/dev/null | awk -F'/' '{print $NF}' | head -n1)
 
     # Deploy the agent (automatically grants Agent Gateway egress permissions)
     python deploy_agent.py \
       --project=${PROJECT_ID} \
       --region=${REGION} \
+      --org-id=${ORG_ID} \
       --enable-agent-identity \
       --agent-name=mortgage-agent \
       --agent-gateway=projects/${PROJECT_ID}/locations/${REGION}/agentGateways/agent-gateway \
@@ -275,10 +277,10 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 
     # Capture the AGENT_ID programmatically from the Vertex AI REST API
     export AGENT_ID=$(curl -fsS \
-      -H "Authorization: Bearer \$(gcloud auth print-access-token)" \
-      "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
-      | jq -r '.reasoningEngines[] | select(.displayName=="mortgage-agent") | .name' \
-      | awk -F'/' '{print \$NF}')
+      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+      "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
+      | jq -r '.reasoningEngines[]? | select(.displayName=="Mortgage Assistant Agent") | .name' \
+      | awk -F'/' '{print $NF}')
     ```
 
 ---
@@ -291,15 +293,17 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
    ```bash
    # Extract the agent ID
    export AGENT_ID=$(curl -fsS \
-     -H "Authorization: Bearer \$(gcloud auth print-access-token)" \
-     "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
-     | jq -r '.reasoningEngines[] | select(.displayName=="mortgage-agent") | .name' \
-     | awk -F'/' '{print \$NF}')
+     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines" \
+     | jq -r '.reasoningEngines[]? | select(.displayName=="mortgage-agent" or .displayName=="Mortgage Assistant Agent") | .name' \
+     | awk -F'/' '{print $NF}')
 
-    # Delete the agent
-    gcloud beta ai reasoning-engines delete ${AGENT_ID} \
-      --region=${REGION} --project=${PROJECT_ID}
-    ```
+   # Delete the agent via REST API (force=true deletes child session resources)
+   curl -fsS -X DELETE \
+     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}?force=true"
+   ```
+
 
 2. **Destroy Infrastructure**:
    ```bash

@@ -218,6 +218,7 @@ def _auto_grant_mcp_egress(
     project: str,
     region: str,
     reasoning_engine_name: str,
+    org_id: str | None = None,
 ) -> None:
     """Grant roles/iap.egressor to the reasoning engine agent identity on all Agent Registry MCP servers and endpoints."""
     import google.auth
@@ -234,7 +235,7 @@ def _auto_grant_mcp_egress(
 
         # Discover project_number and org_id
         project_number = os.environ.get("PROJECT_NUMBER")
-        org_id = os.environ.get("ORG_ID")
+        org_id = org_id or os.environ.get("ORG_ID")
 
         crm_url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}"
         req = urllib.request.Request(crm_url, headers=headers)
@@ -243,8 +244,26 @@ def _auto_grant_mcp_egress(
                 p_info = json.loads(resp.read().decode("utf-8"))
                 project_number = project_number or p_info.get("projectNumber")
                 parent = p_info.get("parent", {})
-                if parent.get("type") == "organization":
-                    org_id = org_id or parent.get("id")
+                p_type = parent.get("type")
+                p_id = parent.get("id")
+                if p_type == "organization":
+                    org_id = org_id or p_id
+                elif p_type == "folder" and not org_id:
+                    # Traverse parent folders to resolve organization ID
+                    curr_id = p_id
+                    for _ in range(5):
+                        f_url = f"https://cloudresourcemanager.googleapis.com/v2/folders/{curr_id}"
+                        f_req = urllib.request.Request(f_url, headers=headers)
+                        with urllib.request.urlopen(f_req) as f_resp:
+                            f_info = json.loads(f_resp.read().decode("utf-8"))
+                            parent_str = f_info.get("parent", "")
+                            if parent_str.startswith("organizations/"):
+                                org_id = parent_str.split("/")[-1]
+                                break
+                            elif parent_str.startswith("folders/"):
+                                curr_id = parent_str.split("/")[-1]
+                            else:
+                                break
         except Exception:
             pass
 
@@ -469,6 +488,11 @@ def main() -> None:
             "roles/run.invoker on each MCP Cloud Run service. Sourced from terraform "
             "output `agent_mcp_invoker_email`. Default: $MCP_INVOKER_SA_EMAIL."
         ),
+    )
+    parser.add_argument(
+        "--org-id",
+        default=os.environ.get("ORG_ID"),
+        help="Optional GCP Organization ID used to construct agent principal for IAM egress grant. Default: $ORG_ID.",
     )
     args = parser.parse_args()
 
@@ -734,6 +758,7 @@ def main() -> None:
                 project=args.project,
                 region=args.region,
                 reasoning_engine_name=reasoning_engine_name,
+                org_id=args.org_id,
             )
 
     if args.ge_deploy:
