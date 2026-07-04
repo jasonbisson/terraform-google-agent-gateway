@@ -239,6 +239,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
    ```
 
    # Deploy the services to Cloud Run
+   ```
    gcloud run services replace cloudrun/legacy-dms.yaml \
      --project=${PROJECT_ID} --region=${REGION}
 
