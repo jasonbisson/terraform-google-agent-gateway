@@ -69,7 +69,7 @@ resource "google_project_service_identity" "network_services" {
 # before downstream modules attempt to bind IAM roles.
 resource "time_sleep" "network_services_identity_propagation" {
   depends_on      = [google_project_service_identity.network_services]
-  create_duration = "30s"
+  create_duration = "90s"
 }
 
 # Enable Vertex AI API explicitly to control order and avoid race conditions
@@ -90,26 +90,28 @@ resource "google_project_service_identity" "aiplatform" {
   depends_on = [google_project_service.aiplatform]
 }
 
-resource "google_project_iam_member" "aiplatform_network_admin" {
-  count   = var.enable_psc_interface ? 1 : 0
-  project = module.project.project_id
-  role    = "roles/compute.networkAdmin"
-  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
-}
-
-resource "google_project_iam_member" "aiplatform_dns_peer" {
-  count   = var.enable_psc_interface ? 1 : 0
-  project = module.project.project_id
-  role    = "roles/dns.peer"
-  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
-}
-
 # Allow time for the AI Platform service identity to propagate before
-# binding IAM roles to the Reasoning Engine service agent.
+# binding IAM roles to the service agents.
 resource "time_sleep" "aiplatform_identity_propagation" {
   count           = var.enable_psc_interface ? 1 : 0
   depends_on      = [google_project_service_identity.aiplatform]
-  create_duration = "30s"
+  create_duration = "60s"
+}
+
+resource "google_project_iam_member" "aiplatform_network_admin" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.project.project_id
+  role       = "roles/compute.networkAdmin"
+  member     = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  depends_on = [time_sleep.aiplatform_identity_propagation, time_sleep.wait_for_org_policy]
+}
+
+resource "google_project_iam_member" "aiplatform_dns_peer" {
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = module.project.project_id
+  role       = "roles/dns.peer"
+  member     = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  depends_on = [time_sleep.aiplatform_identity_propagation, time_sleep.wait_for_org_policy]
 }
 
 # The Reasoning Engine service agent (gcp-sa-aiplatform-re) also needs
@@ -119,7 +121,7 @@ resource "google_project_iam_member" "aiplatform_re_network_admin" {
   project    = module.project.project_id
   role       = "roles/compute.networkAdmin"
   member     = "serviceAccount:service-${module.project.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
-  depends_on = [time_sleep.aiplatform_identity_propagation]
+  depends_on = [time_sleep.aiplatform_identity_propagation, time_sleep.wait_for_org_policy]
 }
 
 resource "google_project_iam_member" "aiplatform_re_dns_peer" {
@@ -127,7 +129,7 @@ resource "google_project_iam_member" "aiplatform_re_dns_peer" {
   project    = module.project.project_id
   role       = "roles/dns.peer"
   member     = "serviceAccount:service-${module.project.project_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
-  depends_on = [time_sleep.aiplatform_identity_propagation]
+  depends_on = [time_sleep.aiplatform_identity_propagation, time_sleep.wait_for_org_policy]
 }
 
 # Override Domain Restricted Sharing org policy constraint for the project

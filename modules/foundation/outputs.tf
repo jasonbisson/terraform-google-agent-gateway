@@ -20,7 +20,8 @@ output "project_id" {
 
   depends_on = [
     time_sleep.wait_for_org_policy,
-    time_sleep.network_services_identity_propagation
+    time_sleep.network_services_identity_propagation,
+    time_sleep.aiplatform_identity_propagation
   ]
 }
 

@@ -289,6 +289,9 @@ module "model_armor" {
   gemini_enterprise_template_id       = var.model_armor_gemini_enterprise_template_id
   gemini_enterprise_template_location = var.model_armor_gemini_enterprise_location
 
+  # Disable standalone IAM bindings — agent_gateway handles gcp-sa-dep IAM when needed
+  enable_iam_bindings = false
+
   depends_on = [module.foundation]
 }
 

@@ -40,6 +40,15 @@ resource "google_compute_network_attachment" "agent_gateway" {
   region                = var.region
   connection_preference = "ACCEPT_AUTOMATIC"
   subnetworks           = [var.agent_gateway_subnet_self_link]
+
+  # Pause during destroy to allow the Agent Gateway tenant project to release
+  # its connected PSC interfaces before Terraform deletes the Network Attachment.
+  # GCP tenant endpoint disconnection can take 2-3 minutes; sleeping 180s avoids
+  # Error 412 (Network Attachment with connected endpoints cannot be deleted).
+  provisioner "local-exec" {
+    when    = destroy
+    command = "sleep 180"
+  }
 }
 
 # Allow the gateway tenant's PSC-I NIC (sourcing from the dedicated subnet) to
@@ -83,7 +92,7 @@ resource "google_network_services_agent_gateway" "this" {
 # 'resource is being created and therefore can not be updated' error.
 resource "time_sleep" "wait_for_gateway" {
   depends_on      = [google_network_services_agent_gateway.this]
-  create_duration = "120s"
+  create_duration = "180s"
 }
 
 # Apply network_config.dnsPeeringConfig via REST PATCH. The
@@ -239,7 +248,7 @@ resource "google_network_security_authz_policy" "iap" {
 # Host header values via http_rules; otherwise the policy applies to all
 # gateway traffic.
 resource "google_network_security_authz_policy" "model_armor" {
-  depends_on     = [time_sleep.wait_for_gateway, terraform_data.dns_peering]
+  depends_on     = [time_sleep.wait_for_gateway, terraform_data.dns_peering, google_network_security_authz_policy.iap]
   count          = var.enable_model_armor ? 1 : 0
   provider       = google-beta
   project        = var.project_id

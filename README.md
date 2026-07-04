@@ -75,6 +75,48 @@ graph TD
    - **DLP Integration**: The Model Armor response template is linked to regional DLP inspect and de-identification templates to redact sensitive data (like SSNs) in transit.
    - The MCP internal LB VIP is automatically relocated into the dedicated `agent-gateway-subnet` to satisfy same-subnet requirements for Private Service Connect interfaces.
 
+### Resource Provisioning Flow
+
+The Terraform configuration provisions resources in a sequential, dependency-ordered pipeline:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ 1. Foundation                                         │  Project, APIs, Service Identities & IAM Propagation
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 2. Networking & Subnets                               │  VPC, Subnets, Private NAT, Private DNS Zones
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 3. Security & Build Infra                              │  Model Armor, Artifact Registry, Cloud Build Bucket
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 4. MCP Cloud Run Services                              │  Microservices (Mortgage Agent, DMS, etc.) & Runtime SAs
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 5. Private Load Balancer & DNS                         │  Internal Application LB, Serverless NEG & Private DNS
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 6. Agent Gateway (Governance Plane)                    │  Agent Gateway, PSC Interface, IAP & Model Armor Authz
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 7. Agent Registry Endpoints                            │  Service Registration for Google APIs & MCP Servers
+└────────────────────────────────────────────────────────┘
+```
+
+1. **Foundation**: Provisions the GCP project, enables required APIs (`networkservices`, `aiplatform`, etc.), creates service identities, and enforces necessary `time_sleep` delays for global IAM propagation.
+2. **Networking**: Sets up custom VPC subnets (Primary, Proxy-only, PSC Interface, and Agent Gateway co-location subnet) along with private Cloud DNS zones.
+3. **Security & Build Infrastructure**: Configures Model Armor (prompt injection, jailbreak, & sensitive data protection filters), Artifact Registry Docker repositories, and Cloud Build storage buckets.
+4. **MCP Cloud Run Services**: Deploys microservices with internal-only ingress rules and configures runtime service accounts.
+5. **Private Load Balancer & DNS**: Configures the Internal Application Load Balancer with Serverless NEGs and private DNS A-records pointing to the ILB VIP.
+6. **Agent Gateway**: Deploys the Google-managed Agent Gateway (`google_network_services_agent_gateway`), provisions the PSC-Interface Network Attachment, and attaches IAP and Model Armor authorization policies.
+7. **Agent Registry Endpoints**: Registers Google API endpoints and MCP server endpoints in the Agent Registry service catalog.
+
 ---
 
 ## Prerequisites

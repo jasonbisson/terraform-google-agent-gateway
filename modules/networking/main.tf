@@ -134,6 +134,15 @@ resource "google_compute_network_attachment" "psc_interface" {
   region                = var.region
   connection_preference = "ACCEPT_AUTOMATIC"
   subnetworks           = [google_compute_subnetwork.psc_interface[0].self_link]
+
+  # Pause during destroy to allow connected PSC interfaces (e.g. Cloud Run services
+  # or consumer endpoints) to release before Terraform deletes the Network Attachment.
+  # GCP endpoint disconnection can take 2-3 minutes; sleeping 180s avoids
+  # Error 412 (Network Attachment with connected endpoints cannot be deleted).
+  provisioner "local-exec" {
+    when    = destroy
+    command = "sleep 180"
+  }
 }
 
 # PSC Interface — firewall rule allowing ingress from PSC-I subnet
