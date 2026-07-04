@@ -198,16 +198,17 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 7. **Update MCP Deployment Configuration**:
    Use `sed` to render the Cloud Run deployment configuration files by replacing the template variables:
    ```bash
-   # Substitute in all cloudrun template files
+   # Substitute template variables and display key rendered values for each file
    for f in cloudrun/*.yaml.tmpl; do
+     out="${f%.tmpl}"
      sed -e "s/\${PROJECT_ID}/${PROJECT_ID}/g" \
          -e "s/\${REGION}/${REGION}/g" \
          -e "s/\${MCP_INGRESS}/${MCP_INGRESS}/g" \
-         "$f" > "${f%.tmpl}"
+         "$f" > "$out"
+     echo "Rendered $out:"
+     grep -E 'image:|serviceAccountName:|location:|ingress:' "$out"
+     echo "---"
    done
-
-   # Verify variables are updated (should return no output)
-   grep -E '\$\{PROJECT_ID\}|\$\{REGION\}|\$\{MCP_INGRESS\}' cloudrun/*.yaml
    ```
 
 8. **Build and Deploy MCP Services**:
