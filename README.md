@@ -253,6 +253,9 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 9. **Deploy the Vertex AI Agent & Grant Egress Permissions**:
     Deploy the Mortgage Assistant Agent to Vertex AI Reasoning Engine. When `--enable-agent-identity` is passed, `deploy_agent.py` automatically grants `roles/iap.egressor` to the agent's identity on all registered Agent Registry MCP services:
     ```bash
+    Grant all Agents the IAP Egressor role
+    ./scripts/grant_agent_mcp_egress.sh --bind-all-agents --endpoints
+
     # Navigate to the agent directory
     cd src/mortgage-agent
 
@@ -264,6 +267,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
     pip install --upgrade pip
     pip install google-cloud-aiplatform
     pip install -e .
+
 
     # Retrieve the invoker service account email and Organization ID
     export MCP_INVOKER_SA_EMAIL=$(terraform -chdir=../.. output -raw agent_mcp_invoker_email)
