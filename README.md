@@ -152,16 +152,20 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 4. **Verifying Internal Routing**:
    After `terraform apply`, from a VM in the VPC:
    ```bash
+   # Retrieve the configured MCP internal DNS domain from terraform output
+   export MCP_DOMAIN=$(terraform output -raw mcp_internal_dns_domain | sed 's/\.$//')
+
    # DNS resolves to the internal LB VIP
-   dig +short legacy-dms.mcp.demo.example.com
+   dig +short legacy-dms.${MCP_DOMAIN}
 
    # LB routes by Host header to the matching Cloud Run service
-   curl https://legacy-dms.mcp.demo.example.com/mcp
-   curl https://corporate-email.mcp.demo.example.com/mcp
-   curl https://income-verification.mcp.demo.example.com/mcp
+   curl https://legacy-dms.${MCP_DOMAIN}/mcp
+   curl https://corporate-email.${MCP_DOMAIN}/mcp
+   curl https://income-verification.${MCP_DOMAIN}/mcp
 
-   # *.run.app URLs are blocked from the public internet
-   curl https://<service>-<hash>-uc.a.run.app/mcp   # 403 from outside the VPC
+   # *.run.app URLs are blocked from the public internet (403 Forbidden)
+   export RUN_APP_URL=$(terraform output -json mcp_service_urls | jq -r '."legacy-dms"')
+   curl -i ${RUN_APP_URL}/mcp
    ```
 
 ---
