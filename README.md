@@ -2,60 +2,6 @@
 
 This directory contains the Terraform configuration for the MCP Gateway demo infrastructure on GCP. It is designed to bootstrap a secure, private, and governed environment for Model Context Protocol (MCP) services.
 
-## Architecture
-
-This infrastructure automates the deployment of a project, enabling APIs, configuring network routing, and setting up governance and security controls:
-
-```mermaid
-graph TD
-    subgraph GCP ["GCP Project (Managed by Project Factory)"]
-        direction TB
-        
-        subgraph Net ["VPC Network"]
-            direction LR
-            Sub1["mcp-subnet (Primary)"]
-            Sub2["proxy-only-subnet (10.9.0.0/24)"]
-            Sub3["agent-gateway-subnet (10.20.0.0/28)"]
-        end
-
-        subgraph Gov ["Governance & Security"]
-            AGW["Agent Gateway (AGENT_TO_ANYWHERE)"]
-            AuthzIAP["IAP Authz Extension"]
-            AuthzMA["Model Armor Authz Extension"]
-            MA["Model Armor Templates"]
-            DLP["DLP SSN Templates"]
-        end
-
-        subgraph Serv ["MCP Services"]
-            ILB["Internal Application LB"]
-            NEG["Serverless NEG (URL Mask)"]
-            CR1["legacy-dms (Cloud Run)"]
-            CR2["corporate-email (Cloud Run)"]
-            CR3["income-verification (Cloud Run)"]
-        end
-
-        subgraph DNS ["Cloud DNS (Private Zone)"]
-            Zone["mcp.demo.example.com."]
-        end
-    end
-
-    %% Routing Flow
-    Client["Reasoning Engine (Agent)"] -->|mTLS| AGW
-    AGW -->|PSC Egress| ILB
-    ILB -->|Host Routing| NEG
-    NEG -->|Internal Ingress| CR1 & CR2 & CR3
-    
-    %% Policy & Security Hookups
-    AGW -.->|REQUEST_AUTHZ| AuthzIAP
-    AGW -.->|CONTENT_AUTHZ| AuthzMA
-    AuthzMA -.->|Filter| MA
-    MA -.->|Redaction| DLP
-    
-    %% DNS Peering
-    Client -.->|DNS Peering| Zone
-    Zone -.->|A Records| ILB
-```
-
 ### Key Architectural Components
 
 1. **Foundation & Project Factory**: 
@@ -149,11 +95,12 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
    terraform apply -var-file=terraform.tfvars
    ```
 
-4. **Verifying Internal Routing**:
+4. **Verifying Internal Routing** *(Optional — when `enable_cloud_run_private_networking = true`)*:
    After `terraform apply`, from a VM in the VPC:
    ```bash
-   # Retrieve the configured MCP internal DNS domain from terraform output
-   export MCP_DOMAIN=$(terraform output -raw mcp_internal_dns_domain | sed 's/\.$//')
+   # Retrieve the configured MCP internal DNS domain (or default if private networking is off)
+   export MCP_DOMAIN=$(terraform output -raw mcp_internal_dns_domain 2>/dev/null | sed 's/\.$//')
+   export MCP_DOMAIN=${MCP_DOMAIN:-mcp.demo.example.com}
 
    # DNS resolves to the internal LB VIP
    dig +short legacy-dms.${MCP_DOMAIN}
@@ -163,7 +110,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
    curl https://corporate-email.${MCP_DOMAIN}/mcp
    curl https://income-verification.${MCP_DOMAIN}/mcp
 
-   # *.run.app URLs are blocked from the public internet (403 Forbidden)
+   # *.run.app URLs are blocked from the public internet (403 Forbidden when private networking is enabled)
    export RUN_APP_URL=$(terraform output -json mcp_service_urls | jq -r '."legacy-dms"')
    curl -i ${RUN_APP_URL}/mcp
    ```
@@ -215,7 +162,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
    done
    ```
 
-8. **Build and Deploy MCP Services**:
+8. **Build MCP Container Images**:
    Build the container images using Cloud Build (using the static `cloudbuild.yaml` in the root directory to specify `CLOUD_LOGGING_ONLY` and the user-managed service account, bypassing the disabled default Compute Engine SA) and deploy them to Cloud Run:
    ```bash
    # Build and push the service images using the user-managed Cloud Build service account
@@ -238,7 +185,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
      --project=${PROJECT_ID}
    ```
 
-   # Deploy the services to Cloud Run
+   # Update MCP services on Cloud Run
    ```
    gcloud run services replace cloudrun/legacy-dms.yaml \
      --project=${PROJECT_ID} --region=${REGION}
@@ -250,8 +197,8 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
      --project=${PROJECT_ID} --region=${REGION}
    ```
 
-9. **Deploy the Vertex AI Agent & Grant Egress Permissions**:
-    Deploy the Mortgage Assistant Agent to Vertex AI Reasoning Engine. When `--enable-agent-identity` is passed, `deploy_agent.py` automatically grants `roles/iap.egressor` to the agent's identity on all registered Agent Registry MCP services:
+9. **Deploy the Mortgage Agent & Grant Egress Permissions**:
+    Deploy the Mortgage Assistant Agent to AI Reasoning Engine. When `--enable-agent-identity` is passed, `deploy_agent.py` automatically grants `roles/iap.egressor` to the agent's identity on all registered Agent Registry MCP services:
     ```bash
     Grant all Agents the IAP Egressor role
     ./scripts/grant_agent_mcp_egress.sh --bind-all-agents --endpoints
@@ -292,6 +239,34 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
       | awk -F'/' '{print $NF}')
     ```
 
+10. **Assign Egress Permissions Use Cases**:
+    Demonstrate fine-grained IAP IAM egress controls on the Agent Gateway using the script:
+
+    * **Use Case 1 — Unconditional grant scoped to specific MCP servers**:
+      ```bash
+      cd ../../
+      ./scripts/grant_agent_mcp_egress.sh \
+        --mcp \
+        --agent-id ${AGENT_ID} \
+        --mcp-filter "legacy-dms income-verification"
+      ```
+
+    * **Use Case 2 — Conditional read-only grant to all MCP servers**:
+      ```bash
+      ./scripts/grant_agent_mcp_egress.sh \
+        --mcp \
+        --agent-id ${AGENT_ID} \
+        --condition-title "ReadOnlyToolsOnly" \
+        --condition-expression "api.getAttribute('iap.googleapis.com/mcp.tool.isReadOnly', false) == true"
+      ```
+
+    * **Use Case 3 — Project-wide grant across all Agent Gateway endpoints**:
+      ```bash
+      ./scripts/grant_agent_mcp_egress.sh \
+        --bind-all-agents \
+        --endpoints
+      ```
+
 ---
 
 ## Clean Up & Destroy
@@ -311,6 +286,14 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
    curl -fsS -X DELETE \
      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
      "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}?force=true"
+
+   # Wait for deletion to complete (polls until agent returns 404)
+   until ! curl -fsS -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}" >/dev/null 2>&1; do
+     echo "Deletion in progress... waiting 5s"
+     sleep 5
+   done
+   echo "✓ Agent deletion complete."
    ```
 
 
