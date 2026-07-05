@@ -273,7 +273,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 
 If you want to tear down the infrastructure, you must delete the Vertex AI Reasoning Engine agent **before** running `terraform destroy`. The agent holds an active network egress connection to the Agent Gateway, which prevents the gateway from being deleted.
 
-1. **Delete the Vertex AI Agent**:
+1. **Delete the Mortgage Agent**:
    ```bash
    # Extract the agent ID
    export AGENT_ID=$(curl -fsS \
@@ -282,7 +282,7 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
      | jq -r '.reasoningEngines[]? | select(.displayName=="mortgage-agent" or .displayName=="Mortgage Assistant Agent") | .name' \
      | awk -F'/' '{print $NF}')
 
-   # Delete the agent via REST API (force=true deletes child session resources)
+   # Delete the Agent
    curl -fsS -X DELETE \
      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
      "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}?force=true"
@@ -299,7 +299,7 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
 
 2. **Destroy Infrastructure**:
    ```bash
-   terraform destroy -var-file=terraform.tfvars
+   terraform destroy
    ```
 
 
