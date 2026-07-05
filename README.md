@@ -2,25 +2,6 @@
 
 This directory contains the Terraform configuration for the Agent Gateway infrastructure deployment on Google Cloud. It is designed to bootstrap a secure, private, and governed environment for Model Context Protocol (MCP) services.
 
-### Key Architectural Components
-
-1. **Foundation & Project Factory**: 
-   A dedicated [Google Project Factory Module](https://github.com/terraform-google-modules/terraform-google-project-factory) provisions a new, isolated project. 
-   - An organization policy override for `constraints/iam.allowedPolicyMemberDomains` is automatically applied to allow Google-managed service agents (like the Service Extensions system SA) to be granted IAM roles.
-   - A bootstrapping provider pattern is used: `google.project_creation` creates the project and enables APIs, while all subsequent resources are provisioned via default providers bound to the newly created, randomized project ID (`module.foundation.project_id`).
-
-2. **Network Isolation**:
-   - The three MCP services (`legacy-dms`, `corporate-email`, `income-verification`) are deployed as **Cloud Run v2** services with `ingress = INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` — they cannot be reached from the public internet.
-   - A regional **Internal Application Load Balancer** with a single **Serverless NEG using a URL mask** (`<service>.<mcp_internal_dns_zone.domain>`) fronts all three services. The LB extracts the `<service>` token from the request `Host` header and routes to the Cloud Run service of the same name.
-   - A Cloud DNS **private zone** (typically `mcp.<dns_zone_domain>.`) is attached to the VPC and holds A records pointing at the LB VIP.
-
-3. **Governance via Agent Gateway**:
-   When `enable_agent_gateway = true`, an **Agent Gateway** is deployed to govern and secure the traffic:
-   - **IAP Authorization Extension**: Performs identity-based authorization checks using IAP policy version `V1`.
-   - **Model Armor Authorization Extension**: Inspects and sanitizes payload content.
-   - **DLP Integration**: The Model Armor response template is linked to regional DLP inspect and de-identification templates to redact sensitive data (like SSNs) in transit.
-   - The MCP internal LB VIP is automatically relocated into the dedicated `agent-gateway-subnet` to satisfy same-subnet requirements for Private Service Connect interfaces.
-
 ### Resource Provisioning Flow
 
 The Terraform configuration provisions resources in a sequential, dependency-ordered pipeline:
