@@ -74,7 +74,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
 
 ---
 
-## Quick Start
+## Technical Deployment
 
 1. **Configure Variables**:
    ```bash
@@ -185,7 +185,7 @@ The Terraform configuration provisions resources in a sequential, dependency-ord
      --project=${PROJECT_ID}
    ```
 
-   # Update MCP services on Cloud Run
+   **Update MCP services on Cloud Run**:
    ```
    gcloud run services replace cloudrun/legacy-dms.yaml \
      --project=${PROJECT_ID} --region=${REGION}
