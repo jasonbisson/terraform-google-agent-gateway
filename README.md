@@ -1,6 +1,6 @@
-# Terraform Infrastructure for MCP Gateway
+# Agent Gateway Deployment Guide
 
-This directory contains the Terraform configuration for the MCP Gateway demo infrastructure on GCP. It is designed to bootstrap a secure, private, and governed environment for Model Context Protocol (MCP) services.
+This directory contains the Terraform configuration for the Agent Gateway infrastructure deployment on Google Cloud. It is designed to bootstrap a secure, private, and governed environment for Model Context Protocol (MCP) services.
 
 ### Key Architectural Components
 
@@ -303,14 +303,11 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
    ```
 
 
-
-
-
 ---
 
 ## Known `gcloud` Exceptions
 
-The project convention is to manage all infrastructure via Terraform. The following exceptions use `gcloud` via `null_resource` local-exec because no native Terraform resource exists:
+The project convention is to manage the majority of the infrastructure deployment via Terraform. The following exceptions use `gcloud` via `null_resource` local-exec because no native Terraform resource exists:
 
 - **Model Armor MCP Content Security** (`modules/model-armor/main.tf`): Uses `gcloud beta services mcp content-security add` to configure MCP floor settings. There is no Terraform resource for this API as of the current provider version.
 
