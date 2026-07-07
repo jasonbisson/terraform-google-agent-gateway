@@ -268,14 +268,18 @@ If you want to tear down the infrastructure, you must delete the Vertex AI Reaso
      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
      "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}?force=true"
 
-   # Wait for deletion to complete (polls until agent returns 404)
-   until ! curl -fsS -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-     "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}" >/dev/null 2>&1; do
-     echo "Deletion in progress... waiting 5s"
-     sleep 5
-   done
-   echo "✓ Agent deletion complete."
-   ```
+    # Wait for deletion to complete (polls until agent returns 404)
+    while true; do
+      STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+        "https://${REGION}-aiplatform.googleapis.com/v1beta1/projects/${PROJECT_ID}/locations/${REGION}/reasoningEngines/${AGENT_ID}")
+      if [ "$STATUS" -eq 404 ]; then
+        break
+      fi
+      echo "Deletion in progress (HTTP $STATUS)... waiting 5s"
+      sleep 5
+    done
+    echo "✓ Agent deletion complete."
+    ```
 
 
 2. **Destroy Infrastructure**:

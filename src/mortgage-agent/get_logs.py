@@ -5,7 +5,7 @@ import json
 import os
 
 def fetch_logs():
-    project_id = os.environ.get("PROJECT_ID", "agent-gateway-4b08")
+    project_id = os.environ.get("PROJECT_ID", "agent-gateway-4481")
     
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     credentials.refresh(google.auth.transport.requests.Request())
